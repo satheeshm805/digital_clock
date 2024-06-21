@@ -1,0 +1,307 @@
+/*
+ * File:   DIGITALCLOCK1.c
+ * Author: sathe
+ *
+ * Created on 21 June, 2024, 2:07 PM
+ */
+
+
+
+#include <xc.h>
+#define _XTAL_FREQ 20000000
+
+#define RS PORTBbits.RB0
+#define RW PORTBbits.RB1
+#define EN PORTBbits.RB2
+
+//macros for DS1307_ic
+#define DS1307_address 0xD0
+#define second 0x00
+#define minute 0x01
+#define hour   0x02
+#define day    0x03
+#define date   0x04
+#define month  0x05
+#define year   0x06
+#define control_reg 0x07
+
+void DS1307_write(char _second,char _minute,char _hour,char _day,char _date,char _month,char _year);
+void DS1307_read(char slave_address,char register_address);
+void delay(unsigned int Delay);
+void bcd_to_ascii(unsigned char value);
+char decimal_to_bcd(unsigned char value);
+
+//lcd
+void cmd(unsigned char val);
+void dat(unsigned char val);
+void lcd_ini();
+void send_data(unsigned char *str, unsigned char num);
+unsigned char _sec,_min,_hr,_day,_date,_month,_yr,_con;
+
+void main(void) 
+{
+    TRISC=0XFF;
+    SSPADD=49;
+    SSPCON=0X28;
+    
+    TRISD=0X00;
+    PORTD=0X00;
+    TRISB=0X00;
+    PORTB=0X00;
+    lcd_ini();
+    cmd(0x80);
+    send_data("CLOCK:",6);
+    cmd(0xc0);
+   send_data("DATE :",6);  
+    DS1307_write(3,2,1,1,5,4,20);
+    __delay_ms(300);
+    while(1)
+    {
+        __delay_ms(20);
+        DS1307_read(DS1307_address,0);
+    }
+    
+    return;
+}
+
+void bcd_to_ascii(unsigned char value)
+{ 
+    unsigned char bcd;
+    bcd=value;
+    bcd=bcd&0xf0;
+    bcd=bcd>>4;
+    bcd=bcd|0x30;
+    dat(bcd);
+    bcd=value;
+    bcd=bcd&0x0f;
+    bcd=bcd|0x30;
+    dat(bcd);
+}
+
+char decimal_to_bcd(unsigned char value)
+{
+    unsigned char msb,lsb,hex;
+    msb=value/10;
+    lsb=value%10;
+    hex=((msb<<4)+lsb);
+    return hex;
+}
+void DS1307_write(char _second,char _minute,char _hour,char _day,char _date,char _month,char _year)
+{
+    SSPCON2bits.SEN=1;
+    while(SEN);
+    PIR1bits.SSPIF=0;
+    
+    SSPBUF = DS1307_address;
+    while(!SSPIF);
+    PIR1bits.SSPIF=0;
+    if(SSPCON2bits.ACKSTAT)
+    {
+        SSPCON2bits.PEN=1;
+        while(PEN);
+        return;
+    }
+    
+    SSPBUF = second;
+    while(!SSPIF);
+    PIR1bits.SSPIF=0;
+    if(SSPCON2bits.ACKSTAT)
+    {
+        SSPCON2bits.PEN=1;
+        while(PEN);
+        return;
+        
+    }
+    SSPBUF = decimal_to_bcd(_second);
+    while(!SSPIF);
+    PIR1bits.SSPIF=0;
+    
+     SSPBUF = decimal_to_bcd(_minute);
+    while(!SSPIF);
+    PIR1bits.SSPIF=0;
+    
+     SSPBUF =decimal_to_bcd(_hour);
+    while(!SSPIF);
+    PIR1bits.SSPIF=0;
+    
+     SSPBUF =decimal_to_bcd(_day);
+    while(!SSPIF);
+    PIR1bits.SSPIF=0;
+    
+     SSPBUF =decimal_to_bcd(_date);
+    while(!SSPIF);
+    PIR1bits.SSPIF=0;
+    
+     SSPBUF =decimal_to_bcd(_month);
+    while(!SSPIF);
+    PIR1bits.SSPIF=0;
+    
+    SSPCON2bits.PEN=1;
+    while(PEN);
+    
+    
+}
+
+void DS1307_read(char slave_address,char register_address)
+{
+    SSPCON2bits.SEN=1;
+    while(SEN);
+    PIR1bits.SSPIF=0;
+    
+    SSPBUF = slave_address;
+    while(!SSPIF);
+    PIR1bits.SSPIF=0;
+    if(SSPCON2bits.ACKSTAT)
+    {
+        SSPCON2bits.PEN=1;
+        while(PEN);
+        return;
+    }
+     SSPBUF = register_address;
+    while(!SSPIF);
+    PIR1bits.SSPIF=0;
+    if(SSPCON2bits.ACKSTAT)
+    {
+        SSPCON2bits.PEN=1;
+        while(PEN);
+        return;
+    }
+    
+    SSPCON2bits.RSEN=1;
+    while(RSEN);
+    PIR1bits.SSPIF=0;
+    
+     SSPBUF = (slave_address+1);
+    while(!SSPIF);
+    PIR1bits.SSPIF=0;
+    if(SSPCON2bits.ACKSTAT)
+    {
+        SSPCON2bits.PEN=1;
+        while(PEN);
+        return;
+    }
+    
+      SSPCON2bits.RCEN=1;
+    while(!SSPSTATbits.BF);
+    _sec=SSPBUF;
+    
+    SSPCON2bits.ACKDT=0;
+    SSPCON2bits.ACKEN=1;
+    while(ACKEN);
+    
+     SSPCON2bits.RCEN=1;
+    while(!SSPSTATbits.BF);
+    _min=SSPBUF;
+    
+      SSPCON2bits.ACKDT=0;
+    SSPCON2bits.ACKEN=1;
+    while(ACKEN);
+    
+     SSPCON2bits.RCEN=1;
+    while(!SSPSTATbits.BF);
+    _hr=SSPBUF;
+    
+      SSPCON2bits.ACKDT=0;
+    SSPCON2bits.ACKEN=1;
+    while(ACKEN);
+    
+     SSPCON2bits.RCEN=1;
+    while(!SSPSTATbits.BF);
+    _day=SSPBUF;
+    
+      SSPCON2bits.ACKDT=0;
+    SSPCON2bits.ACKEN=1;
+    while(ACKEN);
+    
+     SSPCON2bits.RCEN=1;
+    while(!SSPSTATbits.BF);
+    _date=SSPBUF;
+    
+      SSPCON2bits.ACKDT=0;
+    SSPCON2bits.ACKEN=1;
+    while(ACKEN);
+    
+     SSPCON2bits.RCEN=1;
+    while(!SSPSTATbits.BF);
+    _month=SSPBUF;
+    
+      SSPCON2bits.ACKDT=0;
+    SSPCON2bits.ACKEN=1;
+    while(ACKEN);
+    
+     SSPCON2bits.RCEN=1;
+    while(!SSPSTATbits.BF);
+    _yr=SSPBUF;
+    
+      SSPCON2bits.ACKDT=0;
+    SSPCON2bits.ACKEN=1;
+    while(ACKEN);
+    
+     SSPCON2bits.RCEN=1;
+    while(!SSPSTATbits.BF);
+    _con=SSPBUF;
+    
+      SSPCON2bits.ACKDT=0;
+    SSPCON2bits.ACKEN=1;
+    while(ACKEN);
+    
+    SSPCON2bits.PEN=1;
+    while(PEN);
+    
+    cmd(0x88);
+    bcd_to_ascii(_hr);
+    dat(':');
+    bcd_to_ascii(_min);
+    dat(':');
+    bcd_to_ascii(_sec);
+    dat(':');
+    
+    cmd(0xc8);
+    bcd_to_ascii(_date);
+    dat('/');
+    bcd_to_ascii(_month);
+    dat('/');
+    bcd_to_ascii(_yr);
+    
+}
+void delay(unsigned int Delay)
+{
+    while(Delay--);
+    
+}
+void cmd(unsigned char val)
+ {
+	 PORTD=val;
+	 RS=0;
+	 RW=0;
+	 EN=1;
+	 __delay_ms(5);
+	 EN=0;
+ }
+ void dat(unsigned char val)
+ {
+	 PORTD=val;
+	 RS=1;
+	 RW=0;
+	 EN=1;
+	 __delay_ms(5);
+	 EN=0;
+ }
+ void lcd_ini()
+{
+	__delay_ms(5);
+	cmd(0x38);
+	cmd(0x0E);
+	cmd(0x01);
+	cmd(0x0c);
+ }
+ 
+void send_data(unsigned char *str, unsigned char num)
+{
+    unsigned char i;
+    for(i=0;i<num;i++)
+    {
+        dat(str[i]);
+    }
+}
+
